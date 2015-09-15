@@ -8,7 +8,9 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Scanner;
 import javax.xml.parsers.DocumentBuilder;
@@ -60,6 +62,16 @@ public class Jacop {
         return false;
     }
 
+    private Map<String, IntVar> varMap = new HashMap<String, IntVar>();
+
+    public IntVar findVariable(String name) {
+        IntVar result = varMap.get(name);
+        if (result == null) {
+            throw new Error("Unbound variable " + name);
+        }
+        return result;
+    }
+
     public boolean executeCommand(Element root, int startLevel) {
         String tagName = root.getTagName();
         if (tagName.equals("IntVar")) {
@@ -73,16 +85,18 @@ public class Jacop {
                 int max = Integer.parseInt(interval.getAttribute("max"));
                 domain.unionAdapt(min, max);
             }
-            new IntVarWatched(store, name, domain, singletons);
+            IntVar var = new IntVarWatched(store, name, domain, singletons);
+            varMap.put(name, var);
         }
         else if (tagName.equals("AutoIntVar")) {
             String name = root.getAttribute("name");
             IntDomain domain =
                 new IntervalDomain(IntDomain.MinInt, IntDomain.MaxInt);
-            new IntVarWatched(store, name, domain, singletons);
+            IntVar var = new IntVarWatched(store, name, domain, singletons);
+            varMap.put(name, var);
         }
         else if (tagName.equals("GetDomain")) {
-            IntVar X = (IntVar) store.findVariable(root.getAttribute("X"));
+            IntVar X = findVariable(root.getAttribute("X"));
             IntervalDomain domain = (IntervalDomain) X.dom();
             IntervalEnumeration intervals = domain.intervalEnumeration();
             printInterval(intervals.nextElement());
@@ -119,7 +133,7 @@ public class Jacop {
             IntVar[] vars = new IntVar[length];
             for (int i = 0; i < length; i++) {
                 Element elt = (Element) varList.item(i);
-                vars[i] = (IntVar) store.findVariable(elt.getAttribute("X"));
+                vars[i] = findVariable(elt.getAttribute("X"));
             }
             DepthFirstSearch<IntVar> dfs = new DepthFirstSearch<>();
             ComparatorVariable<IntVar> varSelect;
@@ -158,6 +172,9 @@ public class Jacop {
                 if (valSel.equals("up")) {
                     indom = new IndomainMin<IntVar>();
                 }
+                else if (valSel.equals("middle")) {
+                    indom = new IndomainMiddle<IntVar>();
+                }
                 else {
                     indom = new IndomainMax<IntVar>();
                 }
@@ -195,8 +212,70 @@ public class Jacop {
             int[] weights = new int[length];
             for (int i = 0; i < length; i++) {
                 Element var = (Element) vars.item(i);
-                list[i] = (IntVar) store.findVariable(var.getAttribute("X"));
+                list[i] = findVariable(var.getAttribute("X"));
                 weights[i] = Integer.parseInt(var.getAttribute("weight"));
+            }
+            if (rel.equals("=")) {
+                if (length == 2) {
+                    if (constant == 0 &&
+                        (weights[0] == 1 && weights[1] == -1
+                         || weights[0] == -1 && weights[1] == 1)) {
+                        return new XeqY(list[0], list[1]);
+                    }
+                    else if (weights[0] == 1 && weights[1] == -1) {
+                        return new XplusCeqZ(list[1], constant, list[0]);
+                    }
+                    else if (weights[0] == -1 && weights[1] == 1) {
+                        return new XplusCeqZ(list[0], constant, list[1]);
+                    }
+                }
+            }
+            else if (rel.equals("!=")) {
+                if (length == 2 && constant == 0 &&
+                    (weights[0] == 1 && weights[1] == -1
+                     || weights[0] == -1 && weights[1] == 1)) {
+                    return new XneqY(list[0], list[1]);
+                }
+            }
+            else if (rel.equals("<")) {
+                if (length == 2 && constant == 0) {
+                    if (weights[0] == 1 && weights[1] == -1) {
+                        return new XltY(list[0], list[1]);
+                    }
+                    else if (weights[0] == -1 && weights[1] == 1) {
+                        return new XltY(list[1], list[0]);
+                    }
+                }
+            }
+            else if (rel.equals("<=")) {
+                if (length == 2 && constant == 0) {
+                    if (weights[0] == 1 && weights[1] == -1) {
+                        return new XlteqY(list[0], list[1]);
+                    }
+                    else if (weights[0] == -1 && weights[1] == 1) {
+                        return new XlteqY(list[1], list[0]);
+                    }
+                }
+            }
+            else if (rel.equals(">")) {
+                if (length == 2 && constant == 0) {
+                    if (weights[0] == 1 && weights[1] == -1) {
+                        return new XgtY(list[0], list[1]);
+                    }
+                    else if (weights[0] == -1 && weights[1] == 1) {
+                        return new XgtY(list[1], list[0]);
+                    }
+                }
+            }
+            else if (rel.equals(">=")) {
+                if (length == 2 && constant == 0) {
+                    if (weights[0] == 1 && weights[1] == -1) {
+                        return new XgteqY(list[0], list[1]);
+                    }
+                    else if (weights[0] == -1 && weights[1] == 1) {
+                        return new XgteqY(list[1], list[0]);
+                    }
+                }
             }
             /* // Bug with reified linear constraints
               return new Linear(store, list, weights, rel, constant);
@@ -238,33 +317,32 @@ public class Jacop {
             throw new Error("Unknown relation " + rel);
         }
         else if (tagName.equals("XmulYeqZ")) {
-            String target = elt.getAttribute("target");
-            IntVar X = (IntVar) store.findVariable(elt.getAttribute("X"));
-            IntVar Y = (IntVar) store.findVariable(elt.getAttribute("Y"));
-            IntVar Z = (IntVar) store.findVariable(elt.getAttribute("Z"));
+            IntVar X = findVariable(elt.getAttribute("X"));
+            IntVar Y = findVariable(elt.getAttribute("Y"));
+            IntVar Z = findVariable(elt.getAttribute("Z"));
             return new XmulYeqZ(X, Y, Z);
         }
         else if (tagName.equals("XmulYeqC")) {
-            String target = elt.getAttribute("target");
-            IntVar X = (IntVar) store.findVariable(elt.getAttribute("X"));
-            IntVar Y = (IntVar) store.findVariable(elt.getAttribute("Y"));
+            IntVar X = findVariable(elt.getAttribute("X"));
+            IntVar Y = findVariable(elt.getAttribute("Y"));
             int C = Integer.parseInt(elt.getAttribute("C"));
             return new XmulYeqC(X, Y, C);
         }
         else if (tagName.equals("XmodYeqZ")) {
-            String target = elt.getAttribute("target");
-            IntVar X = (IntVar) store.findVariable(elt.getAttribute("X"));
-            IntVar Y = (IntVar) store.findVariable(elt.getAttribute("Y"));
-            IntVar Z = (IntVar) store.findVariable(elt.getAttribute("Z"));
+            IntVar X = findVariable(elt.getAttribute("X"));
+            IntVar Y = findVariable(elt.getAttribute("Y"));
+            IntVar Z = findVariable(elt.getAttribute("Z"));
             return new XmodYeqZ(X, Y, Z);
         }
         else if (tagName.equals("AllDifferent")) {
+            String consistency = elt.getAttribute("consistency");
             Collection<IntVar> vars = getVariables(elt);
-            return new Alldifferent(vars.toArray(new IntVar[vars.size()]));
-        }
-        else if (tagName.equals("AllDistinct")) {
-            Collection<IntVar> vars = getVariables(elt);
-            return new Alldistinct(vars.toArray(new IntVar[vars.size()]));
+            if (consistency.equals("gac")) {
+                return new Alldistinct(vars.toArray(new IntVar[vars.size()]));
+            }
+            else {
+                return new Alldifferent(vars.toArray(new IntVar[vars.size()]));
+            }
         }
         else if (tagName.equals("Not")) {
             Element child = getChildNodesElement(elt).iterator().next();
@@ -291,17 +369,17 @@ public class Jacop {
         }
         else if (tagName.equals("Min")) {
             Collection<IntVar> vars = getVariables(elt);
-            IntVar X = (IntVar) store.findVariable(elt.getAttribute("X"));
+            IntVar X = findVariable(elt.getAttribute("X"));
             return new Min(vars.toArray(new IntVar[vars.size()]), X);
         }
         else if (tagName.equals("Max")) {
             Collection<IntVar> vars = getVariables(elt);
-            IntVar X = (IntVar) store.findVariable(elt.getAttribute("X"));
+            IntVar X = findVariable(elt.getAttribute("X"));
             return new Max(vars.toArray(new IntVar[vars.size()]), X);
         }
         else if (tagName.equals("AbsXeqY")) {
-            IntVar X = (IntVar) store.findVariable(elt.getAttribute("X"));
-            IntVar Y = (IntVar) store.findVariable(elt.getAttribute("Y"));
+            IntVar X = findVariable(elt.getAttribute("X"));
+            IntVar Y = findVariable(elt.getAttribute("Y"));
             return new AbsXeqY(X, Y);
         }
         return null;
@@ -334,7 +412,7 @@ public class Jacop {
         int constants_length = constants.getLength();
         for (int i = 0; i < vars_length; i++) {
             Element var = (Element) vars.item(i);
-            result.add((IntVar) store.findVariable(var.getAttribute("X")));
+            result.add(findVariable(var.getAttribute("X")));
         }
         for (int i = 0; i < constants_length; i++) {
             Element var = (Element) constants.item(i);
@@ -355,15 +433,22 @@ public class Jacop {
 
     public void checkConsistency() {
         if (store.consistency()) {
+            /*
             System.out.print("consistent([");
             IntVar x = singletons.poll();
             if (x != null) {
-                System.out.format("%s=%d", x.id(), x.value());
+                System.out.format("%s=(%d)", x.id(), x.value());
                 while ((x = singletons.poll()) != null) {
-                    System.out.format(",%s=%d", x.id(), x.value());
+                    System.out.format(",%s=(%d)", x.id(), x.value());
                 }
             }
             System.out.println("]).");
+            */
+            IntVar x;
+            while ((x = singletons.poll()) != null) {
+                System.out.format("equal(%s,%d).\n", x.id(), x.value());
+            }
+            System.out.println("consistent.");
         }
         else {
             System.out.println("inconsistent.");

@@ -34,6 +34,7 @@
     (#<==)/2,
     (#<==>)/2,
     all_different/1,
+    all_different/2,
     all_distinct/1,
     sum/3,
     scalar_product/4,
@@ -314,6 +315,10 @@ label(Vars) :-
 %   * down
 %   Try the domain elements in descending order.
 %
+%   * middle
+%   Try the domain elements starting by the middle values and going
+%   outwards.
+%
 % - at most one branching strategy among
 %
 %   * step
@@ -380,19 +385,52 @@ scalar_product(Consts, Vars, Rel, Expr) :-
 
 %% all_different(+Vars)
 %
-% Vars are pairwise distinct (bound-consistent).
+% Vars are pairwise distinct. Equivalent to all_different(Vars, bc).
 
 all_different(Vars) :-
-  vars_id(Vars, VarsId),
-  constraint(all_different(VarsId)).
+  all_different(Vars, bc).
+
+%% all_different(+Vars, +Consistency)
+%
+% Vars are pairwise distinct.  Consistency is one of the following atom:
+% * pairwise
+%   Equivalent to the conjunction of constraints X #\= Y for every pair
+%   {X, Y} in Vars.
+%
+% * bc
+%   Ensures bound-consistency.
+%
+% * gac
+%   Ensures global-arc-consistency.
+
+all_different(Vars, Consistency) :-
+  expr_id(Vars, VarsId),
+  (
+    Consistency = pairwise
+  ->
+    all_different_pairwise(VarsId)
+  ;
+    constraint(all_different(VarsId, Consistency))
+  ).
+
+all_different_pairwise([]).
+
+all_different_pairwise([H | T]) :-
+  different_list(T, H),
+  all_different_pairwise(T).
+
+different_list([], _).
+
+different_list([YId | T], XId) :-
+  constraint(linear(XId * 1 + YId * -1, '!=', 0)),
+  different_list(T, XId).
 
 %% all_distinct(+Vars)
 %
-% Vars are pairwise distinct (global-arc-consistent).
+% Vars are pairwise distinct. Equivalent to all_different(Vars, gac).
 
 all_distinct(Vars) :-
-  vars_id(Vars, VarsId),
-  constraint(all_distinct(VarsId)).
+  all_different(Vars, gac).
 
 :- dynamic(current_solver/4).
 
@@ -1015,15 +1053,10 @@ emit_constraint('XmodYeqZ'(X, Y, Z)) :-
 emit_constraint('AbsXeqY'(X, Y)) :-
   emit('<AbsXeqZ X="~a" Y="~a"/>', [X, Y]).
 
-emit_constraint('all_different'(Vars)) :-
-  emit('<AllDifferent>'),
+emit_constraint('all_different'(Vars, Consistency)) :-
+  emit('<AllDifferent consistency="~a">', [Consistency]),
   emit_vars(Vars),
   emit('</AllDifferent>').
-
-emit_constraint('all_distinct'(Vars)) :-
-  emit('<AllDistinct>'),
-  emit_vars(Vars),
-  emit('</AllDistinct>').
 
 emit_constraint(min(Vars, X)) :-
   emit('<Min X="~a">', [X]),
@@ -1052,7 +1085,29 @@ vars_id([H | _T], _) :-
   type_error('finite-domain variable expected', H).
 
 vars_id(L, _) :-
-  type_error('list of finite-domain variable expected', L).
+  type_error('list of finite-domain variables expected', L).
+
+expr_id([], []) :-
+  !.
+
+expr_id([I | T], [I | U]) :-
+  integer(I),
+  !,
+  expr_id(T, U).
+
+expr_id([H | T], [HId | U]) :-
+  get_attr(H, foreignfd, HId),
+  !,
+  expr_id(T, U).
+
+expr_id([H | T], [HId | U]) :-
+  !,
+  X #= H,
+  get_attr(X, foreignfd, HId),
+  expr_id(T, U).
+
+expr_id(L, _) :-
+  type_error('list of finite-domain arithmetic expressions expected', L).
 
 order(Delta, E1, E2) :-
   b_getval(foreign_vars, Vars),
@@ -1179,6 +1234,8 @@ varsel(max).
 
 valsel(up).
 
+valsel(middle).
+
 valsel(down).
 
 branching(step).
@@ -1238,26 +1295,23 @@ constraint(Format, Args) :-
 
 check_consistency :-
   require_solver(_In, Out, _Err, _Pid),
+  consistency_loop(Out).
+
+consistency_loop(Out) :-
+  read(Out, S),
   (
-    debugging
+    S = consistent
   ->
-    read_line_to_codes(Out, Line),
-    format('~s\n', [Line]),
-    read_from_chars(Line, S)
+    true
   ;
-    read(Out, S)
-  ),
-  S = consistent(L),
-  assign_list(L).
-
-assign_list([]).
-
-assign_list([Id = V | T]) :-
-  assoc(Assoc),
-  get_assoc(Id, Assoc, X),
-  del_attr(X, foreignfd),
-  X = V,
-  assign_list(T).
+    S = equal(Id, V)
+  ->
+    assoc(Assoc),
+    get_assoc(Id, Assoc, X),
+    del_attr(X, foreignfd),
+    X = V,
+    consistency_loop(Out)
+  ).
 
 set_level :-
   backtrack,
