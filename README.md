@@ -8,7 +8,7 @@ At the time of writing, the library is written for SWI-Prolog and
 the only solver that is supported is JaCoP.
 
 The JaCoP interface is written in Java 1.8 and Maven is used for
-downloading the JaCoP dependencies and build the JAR file.
+downloading the JaCoP dependencies and building the JAR file.
 
 `make` should build the JaCoP interface in `classes/jacop.jar` and
 run some tests in SWI-Prolog.

@@ -74,4 +74,8 @@ test(sum, [true((X == 3, Y == 2))]) :-
   Y in 0 .. 2,
   sum([X, Y], #=, 5).
 
+test(nqueens) :-
+  [examples/nqueens],
+  once(nqueens(10, _)).
+
 :- end_tests(foreignfd).

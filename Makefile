@@ -4,8 +4,11 @@ all: classes/jacop.jar tests doc
 
 clean:
 	rm -f classes/jacop.jar
+	- rmdir classes
 	rm -f ${jacopjar}
-	rm -f foreignfd.html
+	rm -f doc/foreignfd.html doc/h1-bg.png doc/h2-bg.png doc/multi-bg.png doc/pldoc.css doc/priv-bg.png doc/pub-bg.png
+	- rmdir doc
+	rm -rf solvers/jacop/target
 
 classes/jacop.jar: ${jacopjar}
 	mkdir -p classes
@@ -18,7 +21,8 @@ tests: foreignfd.pl foreignfd.plt
 	CLASSPATH="classes/*" swipl -g \
 	  "call_cleanup((['foreignfd.plt'], run_tests, halt(0)), halt(1))"
 
-doc: foreignfd.html
+doc: doc/foreignfd.html
 
-foreignfd.html: foreignfd.pl
-	swipl -g "call_cleanup((['foreignfd.pl'], doc_save(foreignfd, []), halt(0)), halt(1))"
+doc/foreignfd.html: foreignfd.pl
+	mkdir -p doc
+	swipl -g "call_cleanup(([foreignfd], doc_save(foreignfd, [doc_root(doc)]), halt(0)), halt(1))"

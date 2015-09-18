@@ -38,10 +38,11 @@ public class Jacop {
 
     private boolean result;
 
+    private Scanner scanner = new Scanner(System.in);
+
     public boolean loop() throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         DocumentBuilder builder = factory.newDocumentBuilder();
-        Scanner scanner = new Scanner(System.in);
         int startLevel = store.level;
         while (true) {
             String line;
@@ -51,6 +52,7 @@ public class Jacop {
             catch (NoSuchElementException _) {
                 break;
             }
+            //System.err.format("Command: %s\n", line);
             byte[] bytes = line.getBytes(StandardCharsets.UTF_8);
             InputStream inputStream = new ByteArrayInputStream(bytes);
             Document document = builder.parse(inputStream);
@@ -63,6 +65,13 @@ public class Jacop {
     }
 
     private Map<String, IntVar> varMap = new HashMap<String, IntVar>();
+
+    public IntVar newIntVar(String name, IntDomain domain) {
+        IntVar var = new IntVarWatched(store, name, domain, singletons);
+        varMap.put(name, var);
+        //System.err.format("Bind variable %s\n", name);
+        return var;
+    }
 
     public IntVar findVariable(String name) {
         IntVar result = varMap.get(name);
@@ -85,15 +94,13 @@ public class Jacop {
                 int max = Integer.parseInt(interval.getAttribute("max"));
                 domain.unionAdapt(min, max);
             }
-            IntVar var = new IntVarWatched(store, name, domain, singletons);
-            varMap.put(name, var);
+            newIntVar(name, domain);
         }
         else if (tagName.equals("AutoIntVar")) {
             String name = root.getAttribute("name");
             IntDomain domain =
                 new IntervalDomain(IntDomain.MinInt, IntDomain.MaxInt);
-            IntVar var = new IntVarWatched(store, name, domain, singletons);
-            varMap.put(name, var);
+            newIntVar(name, domain);
         }
         else if (tagName.equals("GetDomain")) {
             IntVar X = findVariable(root.getAttribute("X"));
