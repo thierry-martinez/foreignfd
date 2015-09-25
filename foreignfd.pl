@@ -230,7 +230,7 @@ fd_var(X) :-
 
 %% fd_dom(+Var, -Dom)
 %
-%  Dom is the current domain (see in/2) of Var.
+%  Dom is the current domain of Var.
 
 fd_dom(X, Dom) :-
   get_attr(X, foreignfd, XId),
